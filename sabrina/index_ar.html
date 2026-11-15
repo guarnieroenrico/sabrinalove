@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Per Sabrina ♥ (AR)</title>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:radial-gradient(ellipse at 50% 20%,#3b1a2a,#1e0e18 75%)}
+  canvas{display:block}
+  #info{position:fixed;top:14px;left:0;right:0;text-align:center;color:#ffd9a0;font:26px Caveat,cursive;pointer-events:none}
+  #enter{position:fixed;inset:0;width:100%;border:0;cursor:pointer;background:rgba(30,10,22,.6);color:#fff;font:700 clamp(54px,10vw,120px) Caveat,cursive;text-shadow:0 0 30px rgba(255,143,163,.8);z-index:5}
+  #enter small{display:block;font:500 clamp(22px,3.4vw,34px) Caveat,cursive;color:#ffd9a0;margin-top:14px;text-shadow:none}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
+</script>
+</head>
+<body>
+<div id="info">Anteprima su PC: trascina per guardarti intorno. Per l’AR apri la pagina col Browser di Meta Quest.</div>
+<button id="enter" hidden>Entra in AR ♥<small>tocca ovunque per iniziare</small></button>
+<script src="media_config.js" onerror="void 0"></script>
+<script type="module">
+import * as THREE from 'three';
+
+const MUSIC = "musica.mp3";
+const DEFAULT_ITEMS = [
+  {type:"photo",caption:"Il giorno in cui ti ho vista e il mondo ha rallentato."},
+  {type:"photo",caption:"Il tuo sorriso è il mio posto preferito."},
+  {type:"video",caption:"Ascolta come ridi: è la mia canzone preferita."},
+  {type:"photo",caption:"Con te anche le giornate storte diventano belle."},
+  {type:"photo",caption:"Sei la mia persona preferita con cui perdere tempo."},
+  {type:"photo",caption:"Non cambiare mai: sei perfetta così."},
+  {type:"video",caption:"Un messaggio solo per te..."}
+];
+const ITEMS = (window.MEDIA && window.MEDIA.length) ? window.MEDIA : DEFAULT_ITEMS, N = ITEMS.length;
+const HAND = 'Caveat,"Segoe Script",cursive', SRGB = THREE.SRGBColorSpace;
+try { await Promise.all(['500 40px Caveat','700 40px Caveat'].map(f => document.fonts.load(f))); } catch(e) {}
+
+/* ---------- renderer / scena ---------- */
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(devicePixelRatio); renderer.setSize(innerWidth, innerHeight); renderer.setClearColor(0, 0);
+renderer.xr.enabled = true; renderer.xr.setFoveation(0); renderer.xr.setFramebufferScaleFactor(1.25);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, .1, 30);
+camera.position.set(0, 1.6, 0);
+addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+/* ---------- musica: parte subito e va in loop ---------- */
+const audio = new Audio(MUSIC); audio.loop = true; audio.volume = .7;
+let audioOn = false;
+const startAudio = () => { if(!audioOn) audio.play().then(() => { audioOn = true; }).catch(() => {}); };
+
+/* ---------- avvio diretto in AR (un solo tocco) ---------- */
+const SESSION_INIT = {optionalFeatures:['local-floor','hand-tracking']}, enterBtn = document.getElementById('enter'), info = document.getElementById('info');
+async function begin(s){
+  s.addEventListener('end', () => { enterBtn.hidden = false; offer(); });
+  await renderer.xr.setSession(s); enterBtn.hidden = true; info.hidden = true;
+}
+async function enter(){
+  startAudio();                                  // il tocco sblocca la musica
+  try { await begin(await navigator.xr.requestSession('immersive-ar', SESSION_INIT)); }
+  catch(e){ info.textContent = 'Impossibile avviare l’AR: ' + e.message; info.hidden = false; }
+}
+function offer(){
+  try { navigator.xr.offerSession && navigator.xr.offerSession('immersive-ar', SESSION_INIT).then(s => { startAudio(); begin(s); }).catch(() => {}); } catch(e){}
+}
+
+/* ---------- utilità: canvas e testo ---------- */
+function ctex(w, h, draw){
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d'); draw(x, w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = SRGB; t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+const lift = (m,n) => { m.polygonOffset = true; m.polygonOffsetFactor = -n; m.polygonOffsetUnits = -n; };   // anti z-fighting
+function lines(x, t, maxW){
+  const out = [];
+  t.split('\n').forEach(par => { let l = ''; par.split(' ').forEach(w => { const n = l ? l+' '+w : w; if(l && x.measureText(n).width > maxW){ out.push(l); l = w; } else l = n; }); out.push(l); });
+  return out;
+}
+function fitText(x, t, cx, cy, maxW, maxH, fam, size, color){
+  let L;
+  for(; size > 16; size -= 2){ x.font = fam.replace('#', size); L = lines(x, t, maxW); if(L.length*size*1.1 <= maxH) break; }
+  x.fillStyle = color; x.textAlign = 'center'; x.textBaseline = 'middle';
+  const lh = size*1.1, y0 = cy - (L.length-1)*lh/2;
+  L.forEach((l,i) => x.fillText(l, cx, y0 + i*lh));
+}
+
+/* ---------- media (foto; i video hanno un'anteprima statica) ---------- */
+const PA = .25/.31, meds = [];
+function phTex(i, type){
+  return ctex(256, 320, (x,w,h) => {
+    const hu = (i*37+340)%360, g = x.createLinearGradient(0,0,w,h);
+    g.addColorStop(0,`hsl(${hu} 70% 62%)`); g.addColorStop(1,`hsl(${(hu+40)%360} 70% 55%)`);
+    x.fillStyle = g; x.fillRect(0,0,w,h); x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = '110px serif'; x.fillText('♥', w/2, h/2-20); x.font = '34px '+HAND; x.fillText('qui la tua '+(type==='video'?'video':'foto'), w/2, h/2+70);
+  });
+}
+function cover(t, iw, ih, a){
+  const r = iw/ih; t.repeat.set(1,1); t.offset.set(0,0);
+  if(r > a){ t.repeat.x = a/r; t.offset.x = (1-t.repeat.x)/2; } else { t.repeat.y = r/a; t.offset.y = (1-t.repeat.y)/2; }
+}
+function media(it, i, mat){
+  const r = {};
+  const bad = () => { r.bad = true; r.tex = phTex(i, it.type); mat.map = r.tex; mat.needsUpdate = true; };
+  if(!it.src){ bad(); return r; }
+  if(it.type === 'video'){
+    const v = document.createElement('video');
+    Object.assign(v, {src:it.src, muted:true, loop:true, playsInline:true, preload:'auto'});   // loop: i video si ripetono
+    v.setAttribute('playsinline',''); r.v = v; r.tex = phTex(i, 'video');
+    v.addEventListener('loadeddata', () => { v.currentTime = .1; });
+    v.addEventListener('seeked', () => {
+      r.w = v.videoWidth; r.h = v.videoHeight;
+      const t = ctex(384, 480, (x,w,h) => {
+        const k = Math.max(w/r.w, h/r.h); x.drawImage(v, (w-r.w*k)/2, (h-r.h*k)/2, r.w*k, r.h*k);
+        x.fillStyle = 'rgba(0,0,0,.55)'; x.beginPath(); x.arc(w-42,h-42,30,0,6.283); x.fill();
+        x.fillStyle = '#fff'; x.font = '30px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('▶', w-39, h-41);
+      });
+      r.tex = t; mat.map = t; mat.needsUpdate = true;
+    }, {once:true});
+    v.addEventListener('error', bad);
+  } else {
+    r.tex = new THREE.TextureLoader().load(it.src, t => { r.w = t.image.width; r.h = t.image.height; cover(t, r.w, r.h, PA); }, undefined, bad);
+    r.tex.colorSpace = SRGB;
+  }
+  mat.map = r.tex; return r;
+}
+
+/* ---------- stato: tutto segue chi indossa il visore ---------- */
+let state = 'browse', needPlace = false, last = 0, openedAt = 0, dim = 0, turning = false, cur = -1;
+const head = {p:new THREE.Vector3(0,1.6,0), q:new THREE.Quaternion()};
+const root = new THREE.Group(); scene.add(root);
+const aDiff = (a,b) => { let d = a-b; while(d > Math.PI) d -= 2*Math.PI; while(d < -Math.PI) d += 2*Math.PI; return d; };
+function fwd(){ const d = new THREE.Vector3(0,0,-1).applyQuaternion(head.q); d.y = 0; return d.lengthSq() < 1e-4 ? d.set(0,0,-1) : d.normalize(); }
+function front(g){
+  const d = fwd(); g.position.set(head.p.x + d.x*g.userData.dist, head.p.y, head.p.z + d.z*g.userData.dist);
+  g.rotation.set(0, Math.atan2(-d.x,-d.z), 0);
+}
+function recenter(){
+  const d = fwd(); root.position.set(head.p.x, head.p.y+.2, head.p.z); root.rotation.y = Math.atan2(-d.x,-d.z);
+  if(viewerG.visible) front(viewerG);
+}
+function followAll(dt){
+  const d = fwd(), yaw = Math.atan2(-d.x,-d.z), kp = 1-Math.exp(-dt*3);
+  root.position.x += (head.p.x - root.position.x)*kp; root.position.y += (head.p.y+.2 - root.position.y)*kp; root.position.z += (head.p.z - root.position.z)*kp;
+  const df = aDiff(yaw, root.rotation.y);                          // il filo si gira solo se ti giri davvero (così puoi guardare ai lati)
+  if(Math.abs(df) > 1.25) turning = true; else if(Math.abs(df) < .1) turning = false;
+  if(turning) root.rotation.y += df*(1-Math.exp(-dt*2.5));
+  if(viewerG.visible){                                             // il ricordo aperto resta sempre davanti agli occhi
+    const kv = 1-Math.exp(-dt*5), D = viewerG.userData.dist;
+    viewerG.position.x += (head.p.x + d.x*D - viewerG.position.x)*kv; viewerG.position.y += (head.p.y - viewerG.position.y)*kv; viewerG.position.z += (head.p.z + d.z*D - viewerG.position.z)*kv;
+    viewerG.rotation.y += aDiff(yaw, viewerG.rotation.y)*kv;
+  }
+}
+
+/* ---------- il filo con le polaroid (attorno a te) ---------- */
+const R = 1.5, STEP = .5/R, pivots = [], papers = [];
+const paperGeo = new THREE.PlaneGeometry(.30,.42), photoGeo = new THREE.PlaneGeometry(.25,.31), capGeo = new THREE.PlaneGeometry(.30,.07),
+      pinGeo = new THREE.BoxGeometry(.014,.04,.008), shGeo = new THREE.PlaneGeometry(.32,.44), pinM = new THREE.MeshBasicMaterial({color:0xd9a868});
+const spts = [];
+for(let k = -1; k <= N; k++){
+  const a = (k-(N-1)/2)*STEP; spts.push(new THREE.Vector3(Math.sin(a)*R, 0, -Math.cos(a)*R));
+  if(k < N){ const b = a + STEP/2; spts.push(new THREE.Vector3(Math.sin(b)*R, -.06, -Math.cos(b)*R)); }
+}
+root.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(spts,false,'centripetal'), N*40, .007, 8), new THREE.MeshBasicMaterial({color:0xd9b98a})));
+
+ITEMS.forEach((it, i) => {
+  const a = (i-(N-1)/2)*STEP, pv = new THREE.Group();
+  pv.position.set(Math.sin(a)*R, 0, -Math.cos(a)*R); pv.rotation.y = -a;
+  pv.userData = {w:.8+Math.random()*.4, ph:Math.random()*6.28, am:.015+Math.random()*.02};
+  const paperM = new THREE.MeshBasicMaterial({color:0xfffaf2}), photoM = new THREE.MeshBasicMaterial({color:0xffffff}),
+        capT = ctex(600,140,(x,w,h) => fitText(x,it.caption,w/2,h/2,w-30,h-8,'500 #px '+HAND,40,'#4a2a30')),
+        capM = new THREE.MeshBasicMaterial({map:capT, transparent:true}),
+        shM = new THREE.MeshBasicMaterial({color:0, transparent:true, opacity:.28, depthWrite:false});
+  lift(photoM,2); lift(capM,3); lift(pinM,4);
+  const mk = (geo,m,y,z,ro) => { const o = new THREE.Mesh(geo,m); o.position.set(0,y,z); o.renderOrder = ro; pv.add(o); return o; };
+  mk(shGeo, shM, -.222, -.012, 0);
+  const paper = mk(paperGeo, paperM, -.21, 0, 1);
+  mk(photoGeo, photoM, -.175, .004, 2); mk(capGeo, capM, -.375, .004, 3); mk(pinGeo, pinM, -.005, .012, 4);
+  meds[i] = media(it, i, photoM);
+  paper.userData = {group:pv, click:() => openViewer(i)};
+  root.add(pv); pivots.push(pv); papers.push(paper);
+});
+
+/* luci che brillano intorno */
+const glow = ctex(64,64,x => { const g = x.createRadialGradient(32,32,0,32,32,32); g.addColorStop(0,'#fff'); g.addColorStop(.3,'rgba(255,217,160,.6)'); g.addColorStop(1,'rgba(255,217,160,0)'); x.fillStyle = g; x.fillRect(0,0,64,64); });
+const lp = new Float32Array(90*3);
+for(let i = 0; i < 90; i++){ const a = Math.random()*6.283, r = .6+Math.random()*1.9; lp.set([Math.sin(a)*r, -.9+Math.random()*2, -Math.cos(a)*r], i*3); }
+const lights = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(lp,3)),
+  new THREE.PointsMaterial({map:glow, size:.07, color:0xffd9a0, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending}));
+lights.frustumCulled = false; lights.renderOrder = -1; root.add(lights);
+
+/* ---------- visore: si oscura tutto, resta solo foto o video (video in loop) ---------- */
+const dome = new THREE.Mesh(new THREE.SphereGeometry(8,24,16), new THREE.MeshBasicMaterial({color:0x000000, side:THREE.BackSide, transparent:true, opacity:0, depthWrite:false}));
+dome.visible = false; dome.frustumCulled = false; dome.userData = {nohover:true, click:() => closeViewer()}; scene.add(dome);
+const viewerG = new THREE.Group(); viewerG.userData = {dist:1.1}; viewerG.visible = false; scene.add(viewerG);
+const vMed = new THREE.Mesh(new THREE.PlaneGeometry(1,1), new THREE.MeshBasicMaterial({transparent:true, opacity:0}));
+vMed.renderOrder = 2; vMed.userData = {nohover:true, click:() => closeViewer()}; viewerG.add(vMed);
+
+function openViewer(i){
+  state = 'view'; cur = i; openedAt = performance.now(); const r = meds[i];
+  let t = r.tex;
+  if(!r.bad){
+    if(r.v) t = r.vtex || (r.vtex = Object.assign(new THREE.VideoTexture(r.v), {colorSpace:SRGB}));
+    else { t = r.vtex || (r.vtex = r.tex.clone()); t.repeat.set(1,1); t.offset.set(0,0); }
+  }
+  vMed.material.map = t; vMed.material.needsUpdate = true;
+  const iw = r.w || (r.v && r.v.videoWidth) || 0, ih = r.h || (r.v && r.v.videoHeight) || 1, asp = iw ? iw/ih : .8, W = 1.2, H = .9;
+  vMed.scale.set(asp > W/H ? W : H*asp, asp > W/H ? W/asp : H, 1);
+  if(r.v){ r.v.currentTime = 0; r.v.play().catch(() => {}); }
+  front(viewerG); viewerG.visible = true;
+}
+function closeViewer(){
+  if(state !== 'view' || performance.now()-openedAt < 400) return;
+  state = 'browse'; const r = meds[cur]; if(r && r.v) r.v.pause();
+}
+
+/* ---------- interazione: controller, mani (pizzico) e mouse ---------- */
+const targets = () => state === 'view' ? [vMed, dome] : papers;
+const rc = new THREE.Raycaster(), m4 = new THREE.Matrix4(), ctrls = [];
+function cast(c){
+  m4.identity().extractRotation(c.matrixWorld); rc.ray.origin.setFromMatrixPosition(c.matrixWorld); rc.ray.direction.set(0,0,-1).applyMatrix4(m4);
+  return rc.intersectObjects(targets(), false)[0];
+}
+for(let i = 0; i < 2; i++){
+  const c = renderer.xr.getController(i); scene.add(c);
+  c.userData.line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0,0,-1)]), new THREE.LineBasicMaterial({color:0xffd9a0, transparent:true, opacity:.8}));
+  c.add(c.userData.line);
+  c.addEventListener('selectstart', () => { startAudio(); const h = c.visible && cast(c); if(h && h.object.userData.click) h.object.userData.click(); });
+  c.addEventListener('squeezestart', recenter);
+  ctrls.push(c);
+}
+renderer.domElement.addEventListener('pointerdown', e => {   // anteprima su PC
+  startAudio(); if(renderer.xr.isPresenting) return;
+  rc.setFromCamera(new THREE.Vector2(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1), camera);
+  const h = rc.intersectObjects(targets(), false)[0]; if(h && h.object.userData.click) h.object.userData.click();
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  if(!e.buttons || renderer.xr.isPresenting) return;
+  camera.rotation.y -= e.movementX*.004; camera.rotation.x = Math.max(-1, Math.min(1, camera.rotation.x - e.movementY*.004));
+});
+addEventListener('keydown', e => { if(e.key === 'r') recenter(); });
+renderer.xr.addEventListener('sessionstart', () => { needPlace = true; startAudio(); });
+
+if(navigator.xr && await navigator.xr.isSessionSupported('immersive-ar').catch(() => false)){
+  enterBtn.hidden = false; enterBtn.onclick = enter; info.hidden = true; offer();
+}
+
+/* ---------- ciclo di rendering ---------- */
+recenter();
+renderer.setAnimationLoop((t, frame) => {
+  const s = t/1000, dt = Math.min(.05, (t-last)/1000 || .016); last = t;
+  const xr = renderer.xr.isPresenting;
+  if(frame){
+    const rs = renderer.xr.getReferenceSpace(), p = rs && frame.getViewerPose(rs);
+    if(p){ const T = p.transform; head.p.set(T.position.x,T.position.y,T.position.z); head.q.set(T.orientation.x,T.orientation.y,T.orientation.z,T.orientation.w);
+      if(needPlace){ needPlace = false; recenter(); } }
+  } else if(!xr){ head.q.copy(camera.quaternion); }
+  followAll(dt);
+  ctrls.forEach(c => { c.userData.line.visible = xr && c.visible; const h = xr && c.visible && cast(c); c.userData.line.scale.z = h ? Math.min(h.distance,3) : 2; if(h) h.object.userData.hu = t + 180; });
+  targets().forEach(o => { if(o.userData.nohover) return; const g = o.userData.group || o, k = (o.userData.hu||0) > t ? 1.07 : 1; g.scale.setScalar(g.scale.x + (k-g.scale.x)*Math.min(1, dt*12)); });
+  pivots.forEach(p => p.rotation.z = Math.sin(s*p.userData.w + p.userData.ph)*p.userData.am);
+  lights.rotation.y = s*.03;
+  const tg = state === 'view' ? 1 : 0; dim += (tg-dim)*(1-Math.exp(-dt*6)); if(Math.abs(tg-dim) < .01) dim = tg;
+  dome.visible = dim > 0; dome.material.opacity = dim; dome.position.copy(head.p);
+  vMed.material.opacity = dim; viewerG.visible = state === 'view' || dim > .03; root.visible = dim < .96;
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
