@@ -1,1 +1,0 @@
-Questa cartella viene riempita da prepara_media.py.
