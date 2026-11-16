@@ -7,7 +7,7 @@ window.MEDIA = [
   {
     "type": "photo",
     "src": "media/foto_02.jpg",
-    "caption": "Il tuo sorriso è il mio posto preferito."
+    "caption": "I tuoi occhi sono il mio posto preferito."
   },
   {
     "type": "photo",
