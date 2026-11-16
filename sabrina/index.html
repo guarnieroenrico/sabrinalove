@@ -108,6 +108,29 @@
   .card video{width:100%;max-height:50vh;border-radius:10px;margin-bottom:22px;background:#000}
   .sig{font-family:var(--hand);font-size:36px;color:var(--rose);margin-bottom:26px}
 
+  /* telecamera e mosaico (stessa scena del filo) */
+  #cam{position:sticky;left:0;top:0;width:100vw;height:100%;overflow:hidden}
+  #world{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0;will-change:transform}
+  /* le altre righe del mosaico sono polaroid identiche a quelle vere (stessa cornice, spilla e didascalia) */
+  .pol.mzt{animation:none;transform:rotate(var(--rt,0deg));cursor:default;pointer-events:none;transition:none;
+    box-shadow:0 6px 10px rgba(0,0,0,.4);opacity:clamp(0,calc(var(--zp,0)*3 - var(--dd,0)),1)}
+  .mzp{width:100%;height:100%;background:#222 center/cover}
+  /* la foto grande emerge dentro ogni polaroid (vere e copie): ognuna mostra la sua fetta */
+  .pol .frame::after{content:"";position:absolute;inset:0;pointer-events:none;background-image:var(--mzimg,none);background-repeat:no-repeat;
+    background-size:var(--mzw,0px) var(--mzh,0px);background-position:calc(var(--mzx,0px) - var(--ox,0px)) calc(var(--mzy,0px) - var(--oy,0px));
+    opacity:calc(clamp(0,calc((var(--zp,0) - .45)*2.2),1)*.82)}
+  #string path.mzrow{opacity:clamp(0,calc(var(--zp,0)*4),1)}
+  #hang.zm .pol{animation-play-state:paused}
+  /* le polaroid già staccate tornano a colori appena parte lo zoom: la riga centrale è uguale alle altre */
+  #hang.zm .pol.taken{opacity:1;filter:none}
+  .pol.taken .pin{transition:opacity .6s}
+  #hang.zm .pol.taken .pin{opacity:1}
+  #mzcap,#mzbtn{position:fixed;z-index:6;opacity:0;pointer-events:none;transition:opacity 1.5s}
+  #mzcap{top:max(18px,env(safe-area-inset-top));left:0;right:0;text-align:center;font-family:var(--hand);font-size:clamp(26px,6vw,38px);color:var(--fg);text-shadow:0 2px 12px rgba(0,0,0,.5)}
+  #mzbtn{bottom:max(22px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%)}
+  body.mzdone #mzcap,body.mzdone #mzbtn{opacity:1;pointer-events:auto}
+  body.mzdone #hud{opacity:0}
+
   #themeBtn{position:fixed;top:max(14px,env(safe-area-inset-top));left:14px;z-index:40;width:44px;height:44px;border-radius:50%;border:0;background:rgba(0,0,0,.45);color:#fff;font-size:20px;cursor:pointer}
   #themes{position:fixed;top:max(66px,calc(env(safe-area-inset-top) + 52px));left:14px;z-index:40;display:none;flex-direction:column;gap:8px;background:rgba(0,0,0,.6);padding:10px;border-radius:14px;backdrop-filter:blur(8px)}
   #themes.open{display:flex}
@@ -137,9 +160,11 @@
   <button class="btn" id="start">Inizia ♥</button>
 </div>
 
-<div id="scroller"><div id="rail"><div id="hang"><svg id="string"><path id="sp"/></svg></div></div></div>
+<div id="scroller"><div id="rail"><div id="cam"><div id="world"><div id="hang"><svg id="string"><path id="sp"/></svg></div></div></div></div></div>
 <div id="hint">scorri →</div>
 <div id="hud"><span id="count"></span></div>
+<div id="mzcap"></div>
+<button class="btn" id="mzbtn">Continua ♥</button>
 
 <div id="viewer">
   <div class="big">
@@ -169,6 +194,9 @@
 const NOME        = "Sabrina";
 const START_DATE  = null;            // la data da cui state insieme, es. "2026-03-14" (lascia null per non mostrarla)
 const MUSIC       = "musica.mp3";    // la vostra canzone: metti il file accanto a index.html
+const MOSAIC_IMG  = "media/foto_06.jpg";   // la foto che appare da lontano (vuoto = la prima foto)
+const MOSAIC_TEXT = "Ogni ricordo era un pezzo di te ♥";
+const MZ_COLS = 15, MZ_ROWS = 13;          // dimensioni del mosaico in polaroid (colonne >= numero di ricordi)
 const FINAL_VIDEO = "";              // es. "media/auguri.mp4" per il tuo video di auguri nel finale
 const FINAL_TEXT  =
 `Non so come fai a rendere speciale anche il giorno più normale.
@@ -273,13 +301,17 @@ function applyTheme(k){
 /* costruzione del filo */
 const GAP = 262, PAD = 150, ANCHOR_Y = 66;
 const railW = PAD*2 + (N-1)*GAP + 220;
-$("#rail").style.width = railW + "px";
+const C0 = Math.floor((MZ_COLS-N)/2), R0 = Math.floor(MZ_ROWS/2), ROWH = 360, TW = 220, TH = 337;
+const MX0 = PAD - C0*GAP - (GAP-TW)/2, MW = MZ_COLS*GAP, MH = MZ_ROWS*ROWH;
+const MY0 = ANCHOR_Y - R0*ROWH - (ROWH-TH)/2;   /* angolo in alto del mosaico, nelle coordinate del filo */
+const TOTAL = Math.max(railW + 2200, MX0 + MW + 60);   /* dopo l'ultima polaroid c'è altro spazio di scorrimento: serve allo zoom */
+$("#rail").style.width = TOTAL + "px";
 const hang = $("#hang"), svg = $("#string");
 svg.setAttribute("width", railW); svg.setAttribute("height", 200);
 const xs = ITEMS.map((_,i)=> PAD + 110 + i*GAP);
 (function(){
-  let d = `M -10 ${ANCHOR_Y-8}`;
-  const pts = [-10, ...xs, railW+10];
+  let d = `M ${PAD-(C0+1)*GAP+110-110} ${ANCHOR_Y-8}`;
+  const pts = Array.from({length:MZ_COLS+2}, (_,c)=> xs[0] + (c-1-C0)*GAP);   /* il filo prosegue per tutta la riga del mosaico */
   let px = pts[0];
   pts.slice(1).forEach(x=>{
     const mx=(px+x)/2;
@@ -329,6 +361,7 @@ ITEMS.forEach((it,i)=>{
   p.style.setProperty("--r2", (-sign*r*0.8)+"deg");
   p.style.setProperty("--t", (4+Math.random()*3)+"s");
   p.style.setProperty("--d", (-Math.random()*4)+"s");
+  p.style.setProperty("--ox", (xs[i]-110+12-MX0)+"px"); p.style.setProperty("--oy", (ANCHOR_Y+12-MY0)+"px");
   const f = document.createElement("div"); f.className="frame";
   f.appendChild(mediaEl(it,false,i));
   p.innerHTML = '<div class="pin"></div>';
@@ -348,6 +381,101 @@ sc.addEventListener("wheel", e=>{
   if(Math.abs(e.deltaY) > Math.abs(e.deltaX)){ sc.style.scrollBehavior="auto"; sc.scrollLeft += e.deltaY; e.preventDefault(); }
 },{passive:false});
 sc.addEventListener("scroll", ()=>{ $("#hint").classList.remove("on"); }, {once:true});
+
+/* ====== mosaico: scorri oltre l'ultima polaroid e la camera si allontana ====== */
+const world = $("#world");
+(function(){
+  const ref = MOSAIC_IMG || (ITEMS.find(it=>it.type==="photo" && it.src) || {}).src || "";
+  if(ref){                                           /* la foto grande viene tagliata a fette, una per polaroid */
+    const im = new Image();
+    im.onload = ()=>{
+      const sc2 = Math.max(MW/im.naturalWidth, MH/im.naturalHeight), w = im.naturalWidth*sc2, h = im.naturalHeight*sc2;
+      hang.style.setProperty("--mzimg", `url("${ref}")`);
+      hang.style.setProperty("--mzw", w+"px"); hang.style.setProperty("--mzh", h+"px");
+      hang.style.setProperty("--mzx", ((MW-w)/2)+"px"); hang.style.setProperty("--mzy", ((MH-h)*.3)+"px");
+    };
+    im.src = ref;
+  }
+  $("#mzcap").textContent = MOSAIC_TEXT;
+  const NS = "http://www.w3.org/2000/svg", fr = document.createDocumentFragment();
+  for(let r=0; r<MZ_ROWS; r++){
+    const y = ANCHOR_Y + (r-R0)*ROWH;
+    if(r !== R0){                                       /* un filo per ogni riga */
+      const pts = Array.from({length:MZ_COLS+2}, (_,c)=> xs[0] + (c-1-C0)*GAP);
+      let d = `M ${pts[0]} ${y-8}`, px = pts[0];
+      pts.slice(1).forEach(x=>{ d += ` Q ${(px+x)/2} ${y+58} ${x} ${y}`; px = x; });
+      const p = document.createElementNS(NS,"path"); p.setAttribute("d", d); p.setAttribute("class","mzrow"); svg.appendChild(p);
+    }
+    for(let c=0; c<MZ_COLS; c++){
+      if(r === R0 && c >= C0 && c < C0+N) continue;     /* qui ci sono le polaroid vere */
+      const i = ((r*MZ_COLS+c)*5 + r*3) % N;            /* i ricordi si ripetono a rotazione */
+      const t = document.createElement("div"); t.className = "pol mzt";
+      t.innerHTML = `<div class="pin"></div><div class="frame"><div class="mzp mzs${i}"></div></div>`;
+      const cp = document.createElement("div"); cp.className = "cap"; cp.textContent = ITEMS[i].caption; t.appendChild(cp);
+      const tx = xs[0]-110 + (c-C0)*GAP;
+      t.style.left = tx + "px"; t.style.top = y + "px";
+      t.style.setProperty("--ox", (tx+12-MX0)+"px"); t.style.setProperty("--oy", (y+12-MY0)+"px");
+      t.style.setProperty("--rt", ((Math.random()-.5)*7)+"deg");
+      t.style.setProperty("--dd", (Math.abs(c-(MZ_COLS-1)/2)/(MZ_COLS/2)*.8 + Math.abs(r-R0)/(MZ_ROWS/2)*1.2).toFixed(2));
+      fr.appendChild(t);
+    }
+  }
+  hang.appendChild(fr);
+})();
+/* miniature per le tessere (se il browser blocca il canvas, per le foto si usa l'originale) */
+function thumb(it){
+  return new Promise(res=>{
+    if(!it.src) return res(null);
+    const draw = (el,w,h)=>{
+      const c = document.createElement("canvas"); c.width = 160; c.height = 200;
+      const s = Math.max(160/w, 200/h);
+      c.getContext("2d").drawImage(el,(160-w*s)/2,(200-h*s)/2,w*s,h*s);
+      try{ return c.toDataURL("image/jpeg",.8); }catch(e){ return null; }
+    };
+    if(it.type === "video"){
+      const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.preload = "auto";
+      const t = setTimeout(()=>res(null), 4000);
+      v.addEventListener("loadeddata", ()=>{ v.currentTime = .1; });
+      v.addEventListener("seeked", ()=>{ clearTimeout(t); res(draw(v,v.videoWidth,v.videoHeight)); }, {once:true});
+      v.onerror = ()=>{ clearTimeout(t); res(null); };
+      v.src = it.src;
+    } else {
+      const im = new Image();
+      im.onload = ()=>res(draw(im,im.naturalWidth,im.naturalHeight) || it.src);
+      im.onerror = ()=>res(null); im.src = it.src;
+    }
+  });
+}
+setTimeout(async ()=>{
+  const th = await Promise.all(ITEMS.map(thumb)), st = document.createElement("style");
+  st.textContent = th.map((u,i)=> u ? `.mzs${i}{background-image:url("${u}")}`
+    : `.mzs${i}{background:linear-gradient(135deg,hsl(${(i*37+340)%360} 70% 62%),hsl(${(i*37+20)%360} 70% 55%))}`).join("\n");
+  document.head.appendChild(st);
+}, 1500);
+
+/* camera: normale = scorre il mondo; oltre l'ultima polaroid = si ferma e si allontana verso il centro del mosaico */
+let MCX = 0, MCY = 0, S1 = .2, S0 = 0;
+function camUpdate(){
+  const vw = innerWidth, vh = innerHeight, SL = sc.scrollLeft;
+  const zp = Math.max(0, Math.min(1, (SL - S0) / Math.max(1, TOTAL - vw - S0)));
+  const e = zp < .5 ? 4*zp*zp*zp : 1 - Math.pow(-2*zp+2, 3)/2;
+  const z = Math.pow(S1, e);
+  const cx0 = Math.min(SL, S0) + vw/2, cy0 = vh/2;
+  const cx = cx0 + (MCX-cx0)*e, cy = cy0 + (MCY-cy0)*e;
+  world.style.transform = `translate(${vw/2 - z*cx}px,${vh/2 - z*cy}px) scale(${z})`;
+  world.style.setProperty("--zp", zp.toFixed(4));
+  hang.classList.toggle("zm", zp > 0);
+  document.body.classList.toggle("mzdone", zp > .97);
+}
+function mzLayout(){
+  const vw = innerWidth, vh = innerHeight, ry = hang.offsetTop + ANCHOR_Y - R0*ROWH - (ROWH-TH)/2;
+  MCX = MX0 + MW/2; MCY = ry + MH/2;
+  S1 = Math.min(vw*.9/MW, vh*.86/MH); S0 = Math.max(0, railW - vw);
+  camUpdate();
+}
+sc.addEventListener("scroll", camUpdate, {passive:true});
+addEventListener("resize", mzLayout); mzLayout();
+$("#mzbtn").addEventListener("click", openFinale);
 
 /* musica */
 const audio = new Audio(MUSIC); audio.loop = true; audio.volume = .6;
@@ -395,7 +523,8 @@ function closeViewer(){
   const v = $("#vframe").querySelector("video"); if(v) v.pause();
   $("#viewer").classList.remove("open");
   setTimeout(()=>{ $("#vframe").innerHTML=""; }, 400);
-  if(taken.size === N) setTimeout(openFinale, 700);
+  if(taken.size === N) setTimeout(()=>{ const h = $("#hint"); h.textContent = "continua a scorrere →"; h.classList.add("on");
+    sc.addEventListener("scroll", ()=>h.classList.remove("on"), {once:true}); }, 700);
 }
 $("#vclose").addEventListener("click", closeViewer);
 $("#viewer").addEventListener("click", e=>{ if(e.target.id==="viewer") closeViewer(); });
