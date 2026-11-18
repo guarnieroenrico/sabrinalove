@@ -44,7 +44,7 @@ body {
   pointer-events: none;
 }
 
-.intro {
+.screen {
   position: fixed;
   inset: 0;
   z-index: 3;
@@ -57,7 +57,7 @@ body {
 }
 
 h1 {
-  margin: 0;
+  margin: 0 0 25px;
   color: #f0d8e1;
   font-size: clamp(30px, 8vw, 48px);
   line-height: 1.2;
@@ -66,15 +66,28 @@ h1 {
   text-shadow: 0 2px 22px #000;
 }
 
+.subtitle {
+  color: #f4dce5;
+  font-size: 22px;
+  font-style: italic;
+  margin-bottom: 25px;
+}
+
 button {
-  margin-top: 34px;
-  padding: 10px 30px 12px;
+  margin: 12px;
+  padding: 12px 30px;
   border: 1px solid rgba(232,196,210,.72);
   border-radius: 999px;
-  background: rgba(8,5,8,.28);
+  background: rgba(8,5,8,.45);
   color: #f0d8e1;
   font: italic 500 23px "Cormorant Garamond", Georgia, serif;
   cursor: pointer;
+  transition: .3s;
+}
+
+button:hover {
+  background: rgba(220,151,177,.2);
+  transform: scale(1.05);
 }
 
 #chat {
@@ -83,7 +96,7 @@ button {
   inset: 0;
   z-index: 2;
   overflow-y: auto;
-  padding: 28px 14px 34px;
+  padding: 28px 14px 50px;
   text-align: center;
   scrollbar-width: none;
 }
@@ -91,14 +104,51 @@ button {
 .message {
   width: fit-content;
   max-width: 96%;
-  margin: 11px auto;
+  margin: 18px auto;
   color: #f4dce5;
   font-size: clamp(23px, 6vw, 30px);
   line-height: 1.12;
   font-style: italic;
   font-weight: 500;
-  text-shadow: 0 2px 14px #000, 0 0 15px rgba(220,151,177,.55);
+  text-shadow: 0 2px 14px #000,
+               0 0 15px rgba(220,151,177,.55);
   animation: appear .75s ease both;
+}
+
+.section-title {
+  color: #f0d8e1;
+  font-size: clamp(29px, 7vw, 38px);
+  font-style: italic;
+  margin: 30px auto;
+}
+
+.reason {
+  width: fit-content;
+  max-width: 95%;
+  margin: 22px auto;
+  color: #f8dce8;
+  font-size: clamp(21px, 5.5vw, 27px);
+  font-style: italic;
+  animation: appear 1s ease both;
+  text-shadow: 0 2px 14px #000,
+               0 0 15px rgba(220,151,177,.45);
+}
+
+.heart {
+  color: #e9a9c1;
+  font-size: 27px;
+  margin: 20px;
+  animation: heartbeat 1.5s infinite;
+}
+
+.back {
+  position: fixed;
+  z-index: 5;
+  top: 12px;
+  left: 12px;
+  margin: 0;
+  padding: 8px 18px;
+  font-size: 19px;
 }
 
 @keyframes appear {
@@ -111,23 +161,63 @@ button {
     transform: translateY(0);
   }
 }
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+.hidden { display: none !important; }
 </style>
 </head>
 
 <body>
 
 <img id="background-image" src="media/IMG_1355.jpeg" alt="">
-
 <div class="shade"></div>
 
-<section class="intro" id="intro">
-  <h1>Lo sai una cosa Sabrina...?</h1>
-  <button onclick="startLove()">Cosa...? ♡</button>
+<!-- MENU PRINCIPALE -->
+<section class="screen" id="home">
+  <h1>Per te, Sabrina ♡</h1>
+  <div class="subtitle">
+    Ho preparato due piccole sorprese per te...
+  </div>
+
+  <button onclick="openLove()">
+    Lo sai una cosa Sabrina...? ♡
+  </button>
+
+  <button onclick="openReasons()">
+    1000 motivi per cui ti amo ♡
+  </button>
 </section>
 
-<main id="chat" aria-live="polite"></main>
+<!-- PRIMA ESPERIENZA -->
+<main id="chat"></main>
+
+<!-- SECONDA ESPERIENZA -->
+<main id="reasonsPage" class="hidden"
+style="
+position:fixed;
+inset:0;
+z-index:2;
+overflow-y:auto;
+padding:65px 14px 40px;
+text-align:center;
+scrollbar-width:none;
+">
+  <h1 class="section-title">
+    Infiniti motivi per cui ti amo...
+  </h1>
+  <div class="heart">♡</div>
+  <div id="reasonsList"></div>
+</main>
+
+<button class="back hidden" id="backButton"
+onclick="goHome()">← Indietro</button>
 
 <script>
+
 const messages = [
   "Ti amo Sabrina ♡",
   "Ti amo amore mio",
@@ -141,25 +231,139 @@ const messages = [
   "Tu, soltanto tu ♡"
 ];
 
-let index = 0;
+const reasons = [
+  "Perché sei semplicemente tu.",
+  "Perché il tuo sorriso illumina le mie giornate.",
+  "Perché riesci a rendermi felice.",
+  "Perché sei il mio pensiero preferito.",
+  "Perché adoro il modo in cui mi guardi.",
+  "Perché ogni momento con te è speciale.",
+  "Perché sei unica al mondo.",
+  "Perché mi fai sentire fortunato.",
+  "Perché la tua voce è la mia melodia preferita.",
+  "Perché con te tutto sembra più bello.",
+  "Perché amo ogni piccolo dettaglio di te.",
+  "Perché sei la mia persona preferita.",
+  "Perché sai farmi sorridere.",
+  "Perché non mi stanco mai di te.",
+  "Perché sei il mio posto felice.",
+  "Perché anche un tuo messaggio cambia la mia giornata.",
+  "Perché amo il tuo carattere.",
+  "Perché sei il mio sogno più bello.",
+  "Perché voglio condividere tanti ricordi con te.",
+  "Perché mi fai battere il cuore.",
+  "Perché sei importante per me.",
+  "Perché amo passare il tempo con te.",
+  "Perché non esiste nessuna come te.",
+  "Perché ogni giorno trovo un nuovo motivo per amarti.",
+  "Perché sei il mio primo pensiero al mattino.",
+  "Perché sei il mio ultimo pensiero la sera.",
+  "Perché rendi speciali anche le cose semplici.",
+  "Perché amo prendermi cura di te.",
+  "Perché sei la mia meraviglia.",
+  "Perché mi fai credere nelle cose belle.",
+  "Perché con te posso essere me stesso.",
+  "Perché ogni tuo abbraccio è speciale.",
+  "Perché amo ascoltarti.",
+  "Perché sei una parte bellissima della mia vita.",
+  "Perché voglio vederti felice.",
+  "Perché sei il mio infinito.",
+  "Perché sei Sabrina, e questo basta. ♡"
+];
 
-function startLove() {
-  document.getElementById("intro").style.display = "none";
+let messageIndex = 0;
+let reasonIndex = 0;
+let loveTimer = null;
+let reasonTimer = null;
+
+function stopTimers() {
+  clearInterval(loveTimer);
+  clearInterval(reasonTimer);
+}
+
+function goHome() {
+  stopTimers();
+
+  document.getElementById("home").classList.remove("hidden");
+  document.getElementById("chat").style.display = "none";
+  document.getElementById("reasonsPage").classList.add("hidden");
+  document.getElementById("backButton").classList.add("hidden");
+}
+
+function showBack() {
+  document.getElementById("home").classList.add("hidden");
+  document.getElementById("backButton").classList.remove("hidden");
+}
+
+// PRIMA PAGINA
+function openLove() {
+  stopTimers();
+  messageIndex = 0;
 
   const chat = document.getElementById("chat");
+  chat.innerHTML = "";
   chat.style.display = "block";
 
-  setInterval(() => {
+  document.getElementById("reasonsPage").classList.add("hidden");
+  showBack();
+
+  loveTimer = setInterval(() => {
+    if (messageIndex >= messages.length) {
+      clearInterval(loveTimer);
+      return;
+    }
+
     const msg = document.createElement("div");
     msg.className = "message";
-    msg.textContent = messages[index % messages.length];
+    msg.textContent = messages[messageIndex];
 
     chat.appendChild(msg);
-    index++;
-
+    messageIndex++;
     chat.scrollTop = chat.scrollHeight;
-  }, 420);
+
+  }, 700);
 }
+
+// SECONDA PAGINA
+function openReasons() {
+  stopTimers();
+  reasonIndex = 0;
+
+  const page = document.getElementById("reasonsPage");
+  const list = document.getElementById("reasonsList");
+
+  list.innerHTML = "";
+  page.classList.remove("hidden");
+
+  document.getElementById("chat").style.display = "none";
+  showBack();
+
+  reasonTimer = setInterval(() => {
+    const reason = document.createElement("div");
+    reason.className = "reason";
+
+    if (reasonIndex < reasons.length) {
+      reason.textContent = "♡ " + reasons[reasonIndex];
+      reasonIndex++;
+    } else {
+      reason.textContent =
+        "♡ E potrei continuare ad amarti per altri mille motivi...";
+
+      reasonIndex = 0;
+    }
+
+    list.appendChild(reason);
+
+    const heart = document.createElement("div");
+    heart.className = "heart";
+    heart.textContent = "♡";
+    list.appendChild(heart);
+
+    page.scrollTop = page.scrollHeight;
+
+  }, 1500);
+}
+
 </script>
 
 </body>
